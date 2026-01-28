@@ -453,7 +453,7 @@
   </div>
 
   <div class="video-stage">
-    <video id="product-video" preload="metadata" muted playsinline poster="poster.jpg">
+    <video id="product-video" preload="auto" muted playsinline poster="poster.jpg">
       <!-- We'll set src dynamically in JS depending on mobile/desktop -->
     </video>
   </div>
@@ -492,8 +492,8 @@
     const DESKTOP_OVERLAY_FADE_START = 0.15;
 
     // NEW: per-device video sources
-    const DESKTOP_VIDEO_SRC = "product_hero_animation.mp4";
-    const MOBILE_VIDEO_SRC  = "phone_vid.mp4";
+    const DESKTOP_VIDEO_SRC = "product_hero_animation_scrub.mp4";
+    const MOBILE_VIDEO_SRC  = "phone_vid_scrubbed.mp4";
 
     const PIN_CONFIG = [
       {
