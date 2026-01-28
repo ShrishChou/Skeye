@@ -4,6 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Skeye</title>
+  <!-- Favicons -->
+<link rel="icon" type="image/png" sizes="96x96" href="./favicon/favicon-96x96.png">
+<link rel="apple-touch-icon" sizes="180x180" href="./favicon/apple-touch-icon.png">
+<link rel="manifest" href="./favicon/site.webmanifest">
+<link rel="shortcut icon" href="./favicon/favicon.ico">
+<meta name="theme-color" content="#000000">
+
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -111,6 +118,49 @@
       background: rgba(255, 255, 255, 0.25);
       border-color: rgba(255, 255, 255, 0.4);
     }
+    /* Mobile nav "carousel" */
+.nav-links.mobile-window{
+  position: relative;
+}
+
+.nav-links.mobile-window .nav-slot{
+  padding: clamp(8px, 1.5vh, 10px) clamp(16px, 3vw, 20px);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+  border-radius: 25px;
+  cursor: pointer;
+  font-size: var(--nav-button-size);
+  transition: background 0.25s ease, border-color 0.25s ease, transform 0.25s ease;
+  backdrop-filter: blur(10px);
+  font-weight: 500;
+  white-space: nowrap;
+
+  /* slide animation */
+  will-change: transform, opacity;
+}
+
+.nav-links.mobile-window .nav-slot.active{
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.nav-links.mobile-window .nav-slot.slide-left{
+  animation: slotSlideLeft 220ms ease both;
+}
+.nav-links.mobile-window .nav-slot.slide-right{
+  animation: slotSlideRight 220ms ease both;
+}
+
+@keyframes slotSlideLeft{
+  from { transform: translateX(18px); opacity: 0.0; }
+  to   { transform: translateX(0px);  opacity: 1.0; }
+}
+@keyframes slotSlideRight{
+  from { transform: translateX(-18px); opacity: 0.0; }
+  to   { transform: translateX(0px);   opacity: 1.0; }
+}
+
 
     .progress-container{
       position: fixed;
@@ -353,9 +403,19 @@
     }
 
     @media (max-width: 768px){
-      .top-nav{ flex-direction: column; align-items: flex-start; }
-      .nav-links{ width: 100%; justify-content: flex-start; }
+        .top-nav{ flex-direction: column; align-items: flex-start; }
+        .nav-links{
+            width: 100%;
+            justify-content: center;   /* ✅ centered */
+            display: flex;
+            flex-wrap: nowrap;
+            overflow: hidden;
+            gap: 10px;
+            pointer-events: auto;
+        }
     }
+
+
     /* Contact popup */
 /* Contact popup (slide in/out) */
 .contact-pop{
@@ -497,7 +557,7 @@
 
     const PIN_CONFIG = [
       {
-        name: "Intro",
+        name: "About",
         frame: 0,
         desktopOverlay: {
           mode: "single",
@@ -538,7 +598,7 @@
         mobileVideo: { xVW: 0, yVH: 0, scale: 1.0 }
       },
       {
-        name: "Features",
+        name: "Speed",
         frame: 66,
         desktopOverlay: {
           mode: "single",
@@ -561,7 +621,7 @@
         mobileVideo: { xVW: 0, yVH: 0, scale: 1.0 }
       },
       {
-        name: "Domains",
+        name: "Domain",
         frame: 135,
         desktopOverlay: {
           mode: "single",
@@ -664,6 +724,50 @@
       console.error("Video loading error:", e);
     });
 
+    let lastMobileIndex = 0;
+
+    function getMobileWindowIndices(activeIndex) {
+        const n = PIN_CONFIG.length;
+        const start = Math.max(0, Math.min(activeIndex - 1, n - 3));
+        return [start, start + 1, start + 2];
+    }
+
+    function updateMobileNavWindow(activeIndex, reason = "move") {
+        if (!isMobile) return;
+
+        const dir =
+            reason === "init" ? 0 :
+            activeIndex > lastMobileIndex ? 1 :
+            activeIndex < lastMobileIndex ? -1 : 0;
+
+        const slots = navLinksContainer.querySelectorAll(".nav-slot");
+        const idxs = getMobileWindowIndices(activeIndex);
+
+        slots.forEach((slotEl, slotPos) => {
+            const pinIndex = idxs[slotPos];
+            const label = PIN_CONFIG[pinIndex]?.name ?? "";
+
+            // update label + click target
+            slotEl.textContent = label;
+            slotEl.onclick = () => {
+            if (contactOpen) closeContact();
+            if (!isTransitioning) goToPin(pinIndex, true, true);
+            };
+
+            // active highlight
+            slotEl.classList.toggle("active", pinIndex === activeIndex);
+
+            // slide animation (retrigger each update)
+            slotEl.classList.remove("slide-left", "slide-right");
+            if (dir === 1) slotEl.classList.add("slide-left");     // moving forward => slide left
+            if (dir === -1) slotEl.classList.add("slide-right");   // moving back => slide right
+        });
+
+        lastMobileIndex = activeIndex;
+    }
+
+
+
     function setVideoSourceForDevice() {
       // clear existing sources
       while (video.firstChild) video.removeChild(video.firstChild);
@@ -706,20 +810,38 @@
     }
 
     function generateNavigation() {
-      navLinksContainer.innerHTML = "";
-      PIN_CONFIG.forEach((pin, index) => {
-        const button = document.createElement("button");
-        button.className = "nav-link";
-        button.textContent = pin.name;
-        if (index === 0) button.classList.add("active");
-        button.addEventListener("click", () => {
-            if (contactOpen) closeContact();
-            if (!isTransitioning) goToPin(index, true, true);
-            });
+        navLinksContainer.innerHTML = "";
 
-        navLinksContainer.appendChild(button);
-      });
+        // Desktop: keep all buttons (your existing behavior)
+        if (!isMobile) {
+            PIN_CONFIG.forEach((pin, index) => {
+            const button = document.createElement("button");
+            button.className = "nav-link";
+            button.textContent = pin.name;
+            if (index === 0) button.classList.add("active");
+            button.addEventListener("click", () => {
+                if (contactOpen) closeContact();
+                if (!isTransitioning) goToPin(index, true, true);
+            });
+            navLinksContainer.appendChild(button);
+            });
+            return;
+        }
+
+        // Mobile: 3-slot "window"
+        navLinksContainer.classList.add("mobile-window");
+
+        for (let slot = 0; slot < 3; slot++) {
+            const btn = document.createElement("button");
+            btn.className = "nav-slot";
+            btn.dataset.slot = String(slot);
+            navLinksContainer.appendChild(btn);
+        }
+
+        // initial paint
+        updateMobileNavWindow(currentPinIndex, "init");
     }
+
 
     function generateProgressDots() {
       progressContainer.innerHTML = "";
@@ -1107,13 +1229,27 @@ window.addEventListener("touchend", (e) => {
     }
 
     function updateNavAndDots() {
-      document.querySelectorAll(".nav-link").forEach((b, i) => b.classList.toggle("active", i === currentPinIndex));
-      document.querySelectorAll(".progress-dot").forEach((d, i) => d.classList.toggle("active", i === currentPinIndex));
-    }
-    function updateNavAndDotsFor(index) {
-        document.querySelectorAll(".nav-link").forEach((b, i) => b.classList.toggle("active", i === index));
-        document.querySelectorAll(".progress-dot").forEach((d, i) => d.classList.toggle("active", i === index));
-    }
+  document.querySelectorAll(".nav-link").forEach((b, i) =>
+    b.classList.toggle("active", i === currentPinIndex)
+  );
+  document.querySelectorAll(".progress-dot").forEach((d, i) =>
+    d.classList.toggle("active", i === currentPinIndex)
+  );
+
+  updateMobileNavWindow(currentPinIndex); // ✅ keep 3-button window synced
+}
+
+function updateNavAndDotsFor(index) {
+  document.querySelectorAll(".nav-link").forEach((b, i) =>
+    b.classList.toggle("active", i === index)
+  );
+  document.querySelectorAll(".progress-dot").forEach((d, i) =>
+    d.classList.toggle("active", i === index)
+  );
+
+  updateMobileNavWindow(index); // ✅ update window immediately (no lag)
+}
+
 
 
     function animateVideoTimeWithOverlay(startTime, endTime, duration, myToken, onProgress, onDone) {
