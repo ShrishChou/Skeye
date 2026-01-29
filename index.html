@@ -190,6 +190,48 @@
       border-radius: 4px;
       background: #fff;
     }
+    /* Mobile-only swipe hint on the right side */
+.mobile-swipe-hint{
+  display: none;
+}
+
+@media (max-width: 768px){
+  .mobile-swipe-hint{
+    position: fixed;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 120;
+
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+
+    opacity: 0.65;
+    pointer-events: none;
+    animation: fadeInOut 3s ease-in-out infinite;
+  }
+
+  .mobile-swipe-hint.hidden{ display: none; }
+
+  .swipe-pill{
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+
+  .swipe-arrows{
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    opacity: 0.85;
+    font-size: 16px;
+    line-height: 1;
+  }
+}
 
     .scroll-instruction{
       position: fixed;
@@ -529,6 +571,11 @@
     <div class="scroll-icon"></div>
     <div>Scroll to explore</div>
   </div>
+  <div class="mobile-swipe-hint" id="mobile-swipe-hint">
+    <div class="swipe-arrows">‹</div>
+    <div class="swipe-pill">Swipe</div>
+  </div>
+  
 
   <div class="overlay-layer" id="desktop-overlays"></div>
   <div id="mobile-overlays"></div>
@@ -592,6 +639,9 @@
         mobileText: {
           width: "92%",
           title: "Multi-camera",
+          position: "free",      // <-- IMPORTANT
+            xVW: 0,                // <-- NEW
+            yVH: 66, 
           subtitle: "Ultra fast processing",
           body: "360° processing + proactive safety."
         },
@@ -605,24 +655,24 @@
           side: "right",
           width: "min(520px, 40vw)",
           eyebrow: "Platform",
-          title: "Modular Black Box",
-          subtitle: "On board processing and real time hazard detection",
+          title: "Plug and Play",
+          subtitle: "Simple integration with existing hardware",
           body: ""
         },
         mobileText: {
           width: "92%",
           position: "free",      // <-- IMPORTANT
             xVW: 0,                // <-- NEW
-            yVH: 30, 
-          title: "Modular Black Box",
-          subtitle: "On board processing and real time hazard detection",
+            yVH: 27, 
+          title: "Plug and Play",
+          subtitle: "Simple integration with existing hardware",
           body: ""
         },
         mobileVideo: { xVW: 0, yVH: 0, scale: 1.0 }
       },
       {
         name: "Domain",
-        frame: 134,
+        frame: 120,
         desktopOverlay: {
           mode: "single",
           side: "bottom-right",
@@ -635,7 +685,7 @@
         mobileText: {
             position: "free",      // <-- IMPORTANT
             xVW: 0,                // <-- NEW
-            yVH: 20, 
+            yVH: 18, 
           width: "92%",
           title: "Solutions for all industries",
           subtitle: "Industry-specific models with universal hardware",
@@ -653,6 +703,8 @@
     const desktopOverlaysContainer = document.getElementById("desktop-overlays");
     const mobileOverlaysContainer = document.getElementById("mobile-overlays");
     const contactPop = document.getElementById("contact-pop");
+    const mobileSwipeHint = document.getElementById("mobile-swipe-hint");
+
     let contactOpen = false;
 
     function openContact() {
@@ -804,6 +856,13 @@
       // initial overlays
       renderDesktopOverlayState(0, 1);
       showMobileOverlay(0);
+        // Hint visibility by device
+if (isMobile) {
+  scrollInstruction.classList.add("hidden");      // don't show "Scroll to explore" on mobile
+  mobileSwipeHint.classList.remove("hidden");     // show swipe hint
+} else {
+  mobileSwipeHint.classList.add("hidden");        // don't show swipe hint on desktop
+}
 
       setupScrollDetection();
       setupKeyboardNavigation();
@@ -1007,9 +1066,14 @@
         lastScrollTime = now;
 
         if (!hasScrolled) {
-          hasScrolled = true;
-          scrollInstruction.classList.add("hidden");
+            hasScrolled = true;
+            if (isMobile) {
+                mobileSwipeHint.classList.add("hidden");
+            } else {
+                scrollInstruction.classList.add("hidden");
+            }
         }
+
 
         if (e.deltaY > 0) {
             if (currentPinIndex === PIN_CONFIG.length - 1) {
@@ -1079,8 +1143,13 @@ window.addEventListener("touchend", (e) => {
 
   if (!hasScrolled) {
     hasScrolled = true;
-    scrollInstruction.classList.add("hidden");
+    if (isMobile) {
+        mobileSwipeHint.classList.add("hidden");
+    } else {
+        scrollInstruction.classList.add("hidden");
+    }
   }
+
 
   // CONTACT OPEN: first swipe closes it, doesn't navigate
   if (contactOpen) {
@@ -1189,15 +1258,15 @@ window.addEventListener("touchend", (e) => {
         applyMobileVideoTransform(PIN_CONFIG[toIndex]);
 
         playToTime(PIN_CONFIG[toIndex].time, myToken, () => {
-        if (transitionToken !== myToken) return;
+            if (transitionToken !== myToken) return;
 
-        currentPinIndex = toIndex;
-        isTransitioning = false;
+            currentPinIndex = toIndex;
+            isTransitioning = false;
 
-        // optional safety (keeps things consistent if canceled)
-        updateNavAndDots();
-        showMobileOverlay(toIndex);
-        });
+            updateNavAndDots();
+            showMobileOverlay(toIndex);
+        }, isButtonJump);
+
 
         return;
       }
@@ -1271,68 +1340,88 @@ function updateNavAndDotsFor(index) {
     }
 
     // Mobile: play forward until reaching time t, then pause and callback.
-    function playToTime(targetTime, myToken, done) {
-  const EPS = 0.05;
+    // Mobile: play (or step reverse) until reaching time t, then pause and callback.
+// If fast=true (button/dot taps), use higher playbackRate / reverse speed.
+    function playToTime(targetTime, myToken, done, fast = false) {
+        const EPS = 0.05;
 
-  const from = video.currentTime;
-  const goingForward = targetTime >= from;
+        const from = video.currentTime;
+        const goingForward = targetTime >= from;
 
-  const cleanup = () => {
-    video.removeEventListener("timeupdate", onTime);
-  };
+        // tune these
+        const FORWARD_RATE_NORMAL = 1.0;
+        const FORWARD_RATE_FAST   = 2.75;  // <-- adjust to taste (2.0–4.0 is typical)
 
-  const finish = () => {
-    video.pause();
-    seekTo(targetTime, () => {
-      cleanup();
-      done();
-    });
-  };
+        const REVERSE_SPEED_NORMAL = 1.6;  // seconds per second (your old value)
+        const REVERSE_SPEED_FAST   = 4.0;  // <-- adjust to taste
 
-  const onTime = () => {
-    if (transitionToken !== myToken) { cleanup(); return; }
+        const cleanup = () => {
+            video.removeEventListener("timeupdate", onTime);
+            // always restore
+            video.playbackRate = 1.0;
+        };
 
-    if (goingForward) {
-      if (video.currentTime >= targetTime - EPS) finish();
-    } else {
-      if (video.currentTime <= targetTime + EPS) finish();
+        const finish = () => {
+            video.pause();
+            video.playbackRate = 1.0;
+            seekTo(targetTime, () => {
+            cleanup();
+            done();
+            });
+        };
+
+        const onTime = () => {
+            if (transitionToken !== myToken) { cleanup(); return; }
+
+            if (goingForward) {
+            if (video.currentTime >= targetTime - EPS) finish();
+            } else {
+            if (video.currentTime <= targetTime + EPS) finish();
+            }
+        };
+
+        video.addEventListener("timeupdate", onTime);
+
+        if (goingForward) {
+            // forward play (fast on button taps)
+            video.playbackRate = fast ? FORWARD_RATE_FAST : FORWARD_RATE_NORMAL;
+
+            const p = video.play();
+            if (p && typeof p.catch === "function") {
+            p.catch(() => {
+                // if autoplay blocked, just snap
+                cleanup();
+                seekTo(targetTime, done);
+            });
+            }
+            return;
+        }
+
+        // REVERSE: step back with requestAnimationFrame (works everywhere)
+        video.pause();
+        video.playbackRate = 1.0;
+
+        const speed = fast ? REVERSE_SPEED_FAST : REVERSE_SPEED_NORMAL;
+        let lastTS = performance.now();
+
+        function step(now) {
+            if (transitionToken !== myToken) { cleanup(); return; }
+
+            const dt = (now - lastTS) / 1000;
+            lastTS = now;
+
+            video.currentTime = Math.max(0, video.currentTime - dt * speed);
+
+            if (video.currentTime <= targetTime + EPS) {
+            finish();
+            return;
+            }
+            requestAnimationFrame(step);
+        }
+
+        requestAnimationFrame(step);
     }
-  };
 
-  video.addEventListener("timeupdate", onTime);
-
-  if (goingForward) {
-    // normal forward play
-    const p = video.play();
-    if (p && typeof p.catch === "function") {
-      p.catch(() => { cleanup(); seekTo(targetTime, done); });
-    }
-    return;
-  }
-
-  // REVERSE: step back with requestAnimationFrame (works everywhere)
-  video.pause();
-
-  const speed = 1.6; // seconds per second; increase to reverse faster
-  let lastTS = performance.now();
-
-  function step(now) {
-    if (transitionToken !== myToken) return;
-
-    const dt = (now - lastTS) / 1000;
-    lastTS = now;
-
-    video.currentTime = Math.max(0, video.currentTime - dt * speed);
-
-    if (video.currentTime <= targetTime + EPS) {
-      finish();
-      return;
-    }
-    requestAnimationFrame(step);
-  }
-
-  requestAnimationFrame(step);
-}
 
 
     function seekTo(t, done) {
